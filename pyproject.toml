@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protein-folding-kinetics"
+version = "0.1.0"
+description = "Machine learning workflow for predicting protein folding kinetics from sequence."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+    "scikit-learn",
+    "xgboost",
+    "shap",
+    "torch",
+    "huggingface-hub",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
