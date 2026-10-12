@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from getpass import getpass
 from xgboost import XGBRegressor
 from sklearn.linear_model import LinearRegression, Ridge
-from folding_kinetics import (
+from Protein_Sequence_Based_Prediction_of_Folding_Kinetics import (
     data_filter,
     data_embed,
     load_embeddings,
