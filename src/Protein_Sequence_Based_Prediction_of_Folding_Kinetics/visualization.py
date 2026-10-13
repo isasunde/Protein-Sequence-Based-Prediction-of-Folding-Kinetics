@@ -127,7 +127,7 @@ def true_vs_predicted_scatter(
     fig, axs = plt.subplots(1,len(models), figsize=(len(models)*6, 5))
     fig.suptitle(f'Predicted vs. true on protein: {protein}')
 
-    for i, model_name, ___ in enumerate(models.items()):
+    for i, model_name in enumerate(models.items()):
         axs[i].scatter(y_test, y_pred[model_name], alpha=0.7)
         axs[i].plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'r--')
         axs[i].set_xlabel("True values")

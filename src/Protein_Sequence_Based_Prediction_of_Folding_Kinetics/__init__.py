@@ -1,8 +1,7 @@
 """ML pipeline for prediction of kinetic stability from protein sequence."""
 from .extract import get_endpoint, save_raw_response, inspect
-from .transform import prepare_columns, align_dtype, validation_report, clean, quality_assurance, transform
-from .load import load_data
-from .pipeline import run_etl
+from .transform import prepare_columns, validate, clean, quality_assurance, transform, add_sequences
+from .load import load_data, fetch_dataset, validate_dataset
 from .preprocessing import data_filter
 from .embeddings import data_embed, load_embeddings
 from .visualization import tsne_visualization, similarity_visualization, performance_histogram, true_vs_predicted_scatter
@@ -14,12 +13,14 @@ __all__ = [
     "save_raw_response",
     "inspect",
     "prepare_columns",
-    "align_dtypes",
-    "validation_report",
+    "validate"
     "clean",
     "quality_assurance",
     "transform",
+    "add_sequences"
     "load_data",
+    "fetch_dataset",
+    "validate_dataset",
     "run_etl",
     "data_filter",
     "data_embed",

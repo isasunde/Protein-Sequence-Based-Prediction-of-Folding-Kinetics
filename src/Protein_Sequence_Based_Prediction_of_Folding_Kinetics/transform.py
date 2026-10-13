@@ -1,6 +1,13 @@
 import re
+import requests
 import pandas as pd
 from datetime import datetime
+
+from .sequence import (
+    fetch_uniprot_sequence,
+    build_variant_sequences,
+    extract_mutation_contexts,
+)
 
 # Prepare regex for pattern recognition of set columns
 UNIPROT_REGEX = re.compile(
@@ -41,8 +48,6 @@ def prepare_columns(data):
     if missing_columns:
         data = data.copy()
         data[missing_columns] = None
-
-    print(f"Added columns:    {missing_columns}")
 
     return data
 
@@ -180,120 +185,175 @@ def align_dtype(data):
     return data
 
 
-def validate_record(entry):
-    """Validate a single K-Pro record and return any validation errors."""
+def add_sequences(data: pd.DataFrame) -> pd.DataFrame:
+    """Retrieve reference sequences and reconstruct K-Pro variants."""
 
-    errors = []
+    data = data.copy()
 
-    # Protein
-    # ---------------------------------------
-    protein = entry.get("PROTEIN")
-
-    if protein is None or not str(protein).strip():
-        errors.append("Missing protein")
-
-    # UniProt ID
-    # ---------------------------------------
-    uniprot = entry.get("UniProt")
-
-    if not isinstance(uniprot, str) or not UNIPROT_REGEX.fullmatch(uniprot):
-        errors.append("Invalid UniProt")
-
-    # Temperature
-    # ---------------------------------------
-    temperature = entry.get("T")
-
-    try:
-        temperature = float(temperature)
-
-        if not -273.15 <= temperature <= 100:
-            errors.append("Temperature outside valid range")
-
-    except (TypeError, ValueError):
-        errors.append("Invalid temperature")
-
-    # pH
-    # ---------------------------------------
-    ph = entry.get("pH")
-
-    try:
-        ph = float(ph)
-
-        if not 0 <= ph <= 14:
-            errors.append("pH outside valid range")
-
-    except (TypeError, ValueError):
-        errors.append("Invalid pH")
-
-    # RSA
-    # ---------------------------------------
-    rsa = entry.get("RSA")
-    
-    try:
-        rsa = float(rsa)
-
-        if not 0 <= rsa <= 100:
-            errors.append("RSA outside valid range")
-    
-    except (TypeError, ValueError):
-        errors.append("Invalid RSA")
-
-
-    # Mutations
-    # ---------------------------------------
-    mutation_pdb = entry.get("MUTATION_PDB")
-
-    if not isinstance(mutation_pdb, str) or not MUTATION_REGEX.fullmatch(mutation_pdb):
-        errors.append("Invalid PDB mutation")
-
-    mutation_uniprot = entry.get("MUTATION_UNIPROT")
-
-    if not isinstance(mutation_uniprot, str) or not MUTATION_REGEX.fullmatch(mutation_uniprot):
-        errors.append("Invalid UniProt mutation")
-
-    return errors
-
-def validation_report(data: pd.DataFrame) -> pd.DataFrame:
-    """Generate a validation report for the extracted K-Pro data."""
-
-    validation_results = data.apply(
-        validate_record, axis=1)
-
-    rules = [
-        "Missing protein",
-        "Invalid UniProt",
-        "Invalid temperature",
-        "Temperature outside valid range",
-        "Invalid pH",
-        "pH outside valid range",
-        "Invalid RSA",
-        "RSA outside valid range",
-        "Invalid PDB mutation",
-        "Invalid UniProt mutation"
+    sequence_columns = [
+        "sequence_reference",
+        "sequence_wildtype",
+        "sequence_mutated",
+        "sequence_status",
     ]
 
-    report = []
+    for column in sequence_columns:
+        data[column] = None
 
-    total_records = len(data)
+    # One reference sequence per unique accession.
+    accessions = data["UniProt"].dropna().unique()
+    sequence_cache = {}
 
-    for rule in rules:
-        failed = validation_results.apply(
-            lambda errors: rule in errors
-            ).sum()
+    for accession in accessions:
+        try:
+            sequence_cache[accession] = fetch_uniprot_sequence(accession)
+        except (requests.RequestException, ValueError) as exc:
+            sequence_cache[accession] = exc
 
-        report.append({
-            "Rule": rule,
-            "Failed": failed,
-            "Passed": total_records - failed,
-            "Failure %": 100 * failed / total_records
-        })
+    for idx, row in data.iterrows():
+        accession = row["UniProt"]
+        reference = sequence_cache.get(accession)
 
-    return pd.DataFrame(report)
+        if reference is None:
+            data.at[idx, "sequence_status"] = "missing_accession"
+            continue
+
+
+def add_sequences(
+    data: pd.DataFrame,
+    flank: int = 100,
+) -> pd.DataFrame:
+    """
+    Add local amino-acid sequence contexts surrounding mutations.
+
+    Reference and mutant sequences are constructed temporarily for
+    validation, but only the local mutation contexts are retained.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        K-Pro records containing UniProt, MUTATION_UNIPROT and,
+        optionally, BACKGROUND_MUT_UNIPROT.
+    flank : int, default=15
+        Number of amino acids to include on each side of each mutation.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of the input DataFrame with mutation_contexts and
+        sequence_status columns added.
+    """
+
+    data = data.copy()
+    data["reference_context"] = None
+    data["mutation_context"] = None
+    data["sequence_status"] = None
+
+    # Cache reference sequences so each accession is retrieved only once.
+    sequence_cache = {}
+
+    for accession in data["UniProt"].dropna().unique():
+        try:
+            sequence_cache[accession] = fetch_uniprot_sequence(accession)
+        except (requests.RequestException, ValueError) as exc:
+            sequence_cache[accession] = exc
+
+    for idx, row in data.iterrows():
+        accession = row["UniProt"]
+
+        if pd.isna(accession):
+            data.at[idx, "sequence_status"] = "missing_accession"
+            continue
+
+        reference = sequence_cache.get(accession)
+
+        if isinstance(reference, Exception):
+            data.at[idx, "sequence_status"] = (
+                f"reference_retrieval_failed: {reference}"
+            )
+            continue
+
+        if reference is None:
+            data.at[idx, "sequence_status"] = "reference_not_found"
+            continue
+
+        try:
+            sequences = build_variant_sequences(
+                reference_sequence=reference,
+                mutation_uniprot=row["MUTATION_UNIPROT"],
+                background_mutation_uniprot=row.get(
+                    "BACKGROUND_MUT_UNIPROT"
+                ),
+            )
+
+            reference_context = extract_mutation_contexts(
+                sequence=sequences["sequence_wildtype"],
+                mutation_string=row["MUTATION_UNIPROT"],
+                flank=flank,
+            )
+            if row['MUTATION_UNIPROT'] == 'WT':
+                mutation_context = None
+                status = 'No mutation'
+                
+            else:
+                mutation_context = extract_mutation_contexts(
+                    sequence=sequences["sequence_mutated"],
+                    mutation_string=row["MUTATION_UNIPROT"],
+                    flank=flank,
+                )
+                status = "validated"
+                
+            data.at[idx, "reference_context"] = reference_context
+            data.at[idx, "mutation_context"] = mutation_context
+            data.at[idx, "sequence_status"] = status
+
+        except ValueError as exc:
+            data.at[idx, "sequence_status"] = (
+                f"mutation_validation_failed: {exc}"
+            )
+
+    return data
+
+
+def validate(data: pd.DataFrame) -> dict:
+    """Check essential requirements before loading records into SQL."""
+
+    if data.empty:
+        raise ValueError("ETL produced no records.")
+
+    required = ["uniprot_id", "reference_context"]
+    missing = set(required) - set(data.columns)
+
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+
+    missing_target = data["ln_kf_h2o"].isna()
+    missing_id = data["uniprot_id"].isna()
+
+    sequence_ok = data["sequence_status"].eq("validated")
+    summary = {
+        "records": len(data),
+        "missing_targets": int(missing_target.sum()),
+        "missing_identifiers": int(missing_id.sum()),
+        "valid_sequences": int(sequence_ok.sum()),
+        "invalid_sequences": int((~sequence_ok).sum()),
+    }
+
+    if missing_id.any():
+        raise ValueError(
+            f"{missing_id.sum()} records have no UniProt identifier."
+        )
+
+    return summary
+
 
 def clean(data: pd.DataFrame) -> pd.DataFrame:
     """Clean and standardize K-Pro data without changing its meaning."""
 
     data = data.copy()
+
+    # Align data types
+    data = align_dtype(data)
 
     # Remove complete duplicates
     data.drop_duplicates(subset = ['UniProt', 'SOURCE', 'BUFFER_NAME', 'BUFFER_CONC', 'MUTATION_PDB', 'PDB_wild', 'T', 'pH', 'METHOD_KIN', 'MEASURE_KIN', 'STATE', 'PMID_KIN'],inplace = True)
@@ -414,3 +474,4 @@ def transform(data: pd.DataFrame) -> pd.DataFrame:
                 )
 
     return data
+
