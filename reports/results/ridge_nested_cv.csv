@@ -1,0 +1,6 @@
+Fold,Test_Proteins,MSE,alpha
+1,"['Spectrin SH3', 'Fyn SH3', 'Protein LG', 'raf RBD', 'PSD1(D27E/Y28K/E43W)']",16.463441006857128,100
+2,"['Nucleophosmin, Cter-NPM1 domain', 'FBP28', 'CTL9', 'FKBP12', 'CBP, KIX domain']",15.159828932943986,100
+3,"['ACBP', 'Tenascin, TNfn3 domain', 'Im9*', 'CKS1', 'Grb2-SH3']",14.30211960994178,100
+4,"['NTL9', 'mAcP', 'Azurin', 'CI2']",18.99521834361801,100
+5,"['bACBP', 'ADAh2', 'L23', 'FF domain from HYPA/FBP11']",13.673437450355866,100

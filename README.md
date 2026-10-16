@@ -6,11 +6,9 @@ Protein folding kinetics describe how quickly a protein transitions from an unfo
 
 This project explores whether protein sequence information can be used to predict folding kinetics using experimental data from the K-Prot database. The workflow combines SQL-based data management, Python data processing, exploratory data analysis, and machine learning to investigate relationships between protein sequence, mutations, experimental conditions, and folding rates.
 
-The long-term goal is to develop predictive models that can generalize to proteins not represented in the training data.
-
 ## Objectives
 
-- **Data integration:** Retrieve and organize protein folding kinetics data from the K-Prot API and a relational MySQL database.
+- **Data integration:** Retrieve and organize protein folding kinetics data from the K-Prot API into a relational MySQL database.
 - **Data quality:** Validate records, handle missing values, standardize experimental metadata, and prepare a consistent modeling dataset.
 - **Exploratory data analysis:** Investigate the distributions of folding rates and the influence of experimental conditions, measurement methods, and publications.
 - **Sequence-based prediction:** Develop machine-learning models to predict folding kinetics from protein sequence information and mutation contexts.

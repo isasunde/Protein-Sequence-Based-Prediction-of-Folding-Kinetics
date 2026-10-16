@@ -184,41 +184,6 @@ def align_dtype(data):
     
     return data
 
-
-def add_sequences(data: pd.DataFrame) -> pd.DataFrame:
-    """Retrieve reference sequences and reconstruct K-Pro variants."""
-
-    data = data.copy()
-
-    sequence_columns = [
-        "sequence_reference",
-        "sequence_wildtype",
-        "sequence_mutated",
-        "sequence_status",
-    ]
-
-    for column in sequence_columns:
-        data[column] = None
-
-    # One reference sequence per unique accession.
-    accessions = data["UniProt"].dropna().unique()
-    sequence_cache = {}
-
-    for accession in accessions:
-        try:
-            sequence_cache[accession] = fetch_uniprot_sequence(accession)
-        except (requests.RequestException, ValueError) as exc:
-            sequence_cache[accession] = exc
-
-    for idx, row in data.iterrows():
-        accession = row["UniProt"]
-        reference = sequence_cache.get(accession)
-
-        if reference is None:
-            data.at[idx, "sequence_status"] = "missing_accession"
-            continue
-
-
 def add_sequences(
     data: pd.DataFrame,
     flank: int = 100,
@@ -313,7 +278,6 @@ def add_sequences(
             )
 
     return data
-
 
 def validate(data: pd.DataFrame) -> dict:
     """Check essential requirements before loading records into SQL."""

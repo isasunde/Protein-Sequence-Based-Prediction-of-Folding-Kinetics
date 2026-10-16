@@ -8,6 +8,7 @@ from pathlib import Path
 from getpass import getpass
 from dotenv import load_dotenv
 from Protein_Sequence_Based_Prediction_of_Folding_Kinetics import (
+    fetch_dataset,
     data_embed,
     load_embeddings,
 )
@@ -42,70 +43,8 @@ METADATA_COLUMNS = [
     "mutation_context",
 ]
 
-
 # ============================================
-# 1. Fetch analysis dataset from SQL
-# ============================================
-def fetch_dataset() -> pd.DataFrame:
-    """Fetch one row per kinetic measurement from the normalized database."""
-
-    config = {
-        "host": os.environ["MYSQL_HOST"],
-        "port": int(os.getenv("MYSQL_PORT", "3306")),
-        "user": os.environ["MYSQL_USER"],
-        "password": os.environ["MYSQL_PASSWORD"],
-        "database": os.getenv("MYSQL_DATABASE", "kpro"),
-    }
-
-    query = """
-        SELECT
-            mv.variable_id,
-            mv.measurement_id,
-            e.experiment_id,
-
-            p.protein_id,
-            p.protein_name,
-            p.uniprot_id,
-
-            mut.mutation_id,
-            mut.mutation_uniprot,
-            mut.mutation_pdb,
-
-            mv.reference_context,
-            mv.mutation_context,
-
-            m.ln_kf_h2o
-
-        FROM model_variable AS mv
-
-        JOIN measurement AS m
-            ON m.measurement_id = mv.measurement_id
-
-        JOIN experiment AS e
-            ON e.experiment_id = mv.experiment_id
-           AND e.experiment_id = m.experiment_id
-
-        JOIN protein AS p
-            ON p.protein_id = mv.protein_id
-           AND p.protein_id = e.protein_id
-
-        JOIN mutation AS mut
-            ON mut.mutation_id = mv.mutation_id
-           AND mut.mutation_id = e.mutation_id
-
-        ORDER BY mv.measurement_id;
-    """
-
-    connection = mysql.connector.connect(**config)
-
-    try:
-        return pd.read_sql_query(query, connection)
-    finally:
-        connection.close()
-
-
-# ============================================
-# 2. Validate and prepare sequence data
+# 1. Validate and prepare sequence data
 # ============================================
 def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
     """Clean sequence contexts and validate the prediction target."""
@@ -165,7 +104,7 @@ def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================
-# 3. Generate or load embeddings
+# 2. Generate or load embeddings
 # ============================================
 def load_or_create_embeddings(data: pd.DataFrame):
     """Generate embeddings or align a cached file to the current SQL dataset."""
@@ -267,10 +206,10 @@ def load_or_create_embeddings(data: pd.DataFrame):
 
 
 # ============================================
-# 4. Run feature engineering
+# 3. Run feature engineering
 # ============================================
 def main():
-    data = fetch_dataset()
+    data = fetch_dataset('feature_dataset.sql')
     data = prepare_sequences(data)
 
     X, y, embeddings_df = load_or_create_embeddings(data)

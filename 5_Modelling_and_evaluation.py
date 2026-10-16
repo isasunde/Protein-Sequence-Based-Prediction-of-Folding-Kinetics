@@ -11,6 +11,7 @@ from xgboost import XGBRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 
 from Protein_Sequence_Based_Prediction_of_Folding_Kinetics import (
+    fetch_dataset,
     load_embeddings,
     tsne_visualization,
     similarity_visualization,
@@ -25,7 +26,6 @@ from Protein_Sequence_Based_Prediction_of_Folding_Kinetics import (
 # ============================================
 # Configuration
 # ============================================
-
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -45,86 +45,7 @@ RUN_LOPO_CV = True
 EVALUATE_ONE_PROTEIN = True
 
 # ============================================
-# 1. Retrieve metadata and target from SQL
-# ============================================
-def fetch_analysis_data() -> pd.DataFrame:
-    """Retrieve measurement-level targets and metadata from MySQL."""
-
-    config = {
-        "host": os.environ["MYSQL_HOST"],
-        "port": int(os.getenv("MYSQL_PORT", "3306")),
-        "user": os.environ["MYSQL_USER"],
-        "password": os.environ["MYSQL_PASSWORD"],
-        "database": os.getenv("MYSQL_DATABASE", "kpro"),
-    }
-
-    query = """
-        SELECT
-            mv.variable_id,
-            mv.measurement_id,
-            mv.experiment_id,
-
-            p.protein_id,
-            p.protein_name,
-            p.uniprot_id,
-
-            mut.mutation_id,
-            mut.mutation_uniprot,
-            mut.mutation_pdb,
-
-            mv.reference_context,
-            mv.mutation_context,
-
-            m.ln_kf_h2o,
-            m.dln_kf_h2o,
-
-            e.temperature,
-            e.ph,
-            e.buffer_name,
-            e.buffer_conc,
-            e.additives,
-            e.kinetic_method,
-            e.kinetic_measurement,
-            e.state,
-            e.reversibility,
-
-            pub.publication_id,
-            pub.pmid,
-            pub.publication_year
-
-        FROM model_variable AS mv
-
-        JOIN measurement AS m
-            ON m.measurement_id = mv.measurement_id
-           AND m.experiment_id = mv.experiment_id
-
-        JOIN experiment AS e
-            ON e.experiment_id = mv.experiment_id
-           AND e.protein_id = mv.protein_id
-           AND e.mutation_id = mv.mutation_id
-
-        JOIN protein AS p
-            ON p.protein_id = mv.protein_id
-
-        JOIN mutation AS mut
-            ON mut.mutation_id = mv.mutation_id
-
-        JOIN publication AS pub
-            ON pub.publication_id = e.publication_id
-
-        ORDER BY mv.measurement_id;
-    """
-
-    connection = mysql.connector.connect(**config)
-
-    try:
-        return pd.read_sql_query(query, connection)
-    finally:
-        connection.close()
-
-
-# ============================================
-# 2. Load embeddings and align with SQL data
+# 1. Load embeddings and align with SQL data
 # ============================================
 def load_model_dataset():
     """
@@ -141,7 +62,7 @@ def load_model_dataset():
         )
 
     _, _, cached_embeddings = load_embeddings(str(EMBEDDING_PATH))
-    sql_data = fetch_analysis_data()
+    sql_data = fetch_dataset('model_dataset.sql')
 
     # Validate SQL data before merging.
     for name, frame in [
@@ -264,7 +185,6 @@ def load_model_dataset():
 # ============================================
 # 3. Define regression models
 # ============================================
-
 def define_models():
     """Return the regression models and their scaling configurations."""
 
@@ -295,7 +215,6 @@ def define_models():
 # ============================================
 # 4. Explore embeddings
 # ============================================
-
 def explore_embeddings(X, y, data):
     """Visualize embedding structure and sequence similarity."""
 
@@ -322,7 +241,6 @@ def explore_embeddings(X, y, data):
 # ============================================
 # 5. Hyperparameter tuning
 # ============================================
-
 def tune_models(X, y, data, models):
     """Run nested cross-validation for Ridge and XGBoost."""
 
@@ -371,7 +289,6 @@ def tune_models(X, y, data, models):
 # ============================================
 # 6. Compare models using leave-one-protein-out CV
 # ============================================
-
 def compare_models(X, y, data, models):
     """Evaluate model generalization to held-out proteins."""
 
@@ -408,11 +325,9 @@ def compare_models(X, y, data, models):
 
     return results, summary
 
-
 # ============================================
 # 7. Evaluate an individual protein
 # ============================================
-
 def evaluate_protein(X, y, data, models):
     """Visualize predictions for a selected held-out protein."""
 
@@ -467,7 +382,6 @@ def evaluate_protein(X, y, data, models):
 # ============================================
 # 8. Run pipeline
 # ============================================
-
 def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)

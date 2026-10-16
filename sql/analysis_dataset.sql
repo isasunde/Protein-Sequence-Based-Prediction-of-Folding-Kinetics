@@ -1,5 +1,3 @@
-USE kpro;
-
 SELECT
     mv.variable_id,
     mv.measurement_id,
