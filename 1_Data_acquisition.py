@@ -2,8 +2,8 @@
 
 import logging
 import os
-from pathlib import Path
 
+from pathlib import Path
 from dotenv import load_dotenv
 
 from Protein_Sequence_Based_Prediction_of_Folding_Kinetics import (

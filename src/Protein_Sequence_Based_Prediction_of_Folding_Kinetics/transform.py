@@ -52,6 +52,7 @@ def prepare_columns(data):
     return data
 
 def fill_protein_identifiers(data):
+    """Add protein name from uniprot ID or reverse, if one is missing"""
     data = data.copy()
 
     # Normalize empty strings to missing values
@@ -101,8 +102,7 @@ def align_dtype(data):
                      'ln(kf)_H2O', 'ln(ku)_H2O', 'dln(kf)_H2O', 
                      'dln(ku)_H2O', 'ln(kf)_DEN', 'ln(ku)_DEN', 
                      'dln(kf)_DEN', 'dln(ku)_DEN', 'dGKIN_H2O', 
-                     'ddGKIN_H2O', 'mf', 'mu', 'CM_KIN', 'beta-T',
-                     'PhiF_H2O',
+                     'ddGKIN_H2O', 'mf', 'mu', 'CM_KIN', 'beta-T'
                      ]
 
     string_columns = ['PFAM', 'CATH', 'MUTATION_UNIPROT', 
@@ -115,18 +115,28 @@ def align_dtype(data):
     data = fill_protein_identifiers(data)
     data['REVERSIBILITY'] = data['REVERSIBILITY'].str.title()
 
+    # Clean known issue value (column contain >1 values, which are set to NaN)
+    data['PhiF_H2O'] = pd.to_numeric(data['PhiF_H2O'], errors = 'coerce')
+
     try:
         for column in categorical_columns:
+            data[column] = data[column].fillna('NA')
+            data[column] = data[column].replace(["", "NA", "N/A", "None", 'NaN'], 'NA')
             data[column] = data[column].astype('category')
 
         for column in integer_columns:
             data[column] = data[column].astype(int)
+            data[column] = data[column].replace(["", "NA", "N/A", "None"], pd.NA)
 
         for column in float_columns:
             data[column] = data[column].astype(float)
+            data[column] = data[column].replace(["", "NA", "N/A", "None"], pd.NA)
     
         for column in string_columns:
+            data[column] = data[column].fillna('NA')
             data[column] = data[column].astype(str)
+            data[column] = data[column].replace(["", "NA", "N/A", "None"], 'NA')
+        
     except ValueError:
         print(f'ValueError upon conversion of {column}')
 
@@ -199,7 +209,7 @@ def add_sequences(
     data : pd.DataFrame
         K-Pro records containing UniProt, MUTATION_UNIPROT and,
         optionally, BACKGROUND_MUT_UNIPROT.
-    flank : int, default=15
+    flank : int, default=100
         Number of amino acids to include on each side of each mutation.
 
     Returns
@@ -279,40 +289,9 @@ def add_sequences(
 
     return data
 
-def validate(data: pd.DataFrame) -> dict:
-    """Check essential requirements before loading records into SQL."""
-
-    if data.empty:
-        raise ValueError("ETL produced no records.")
-
-    required = ["uniprot_id", "reference_context"]
-    missing = set(required) - set(data.columns)
-
-    if missing:
-        raise ValueError(f"Missing required columns: {sorted(missing)}")
-
-    missing_target = data["ln_kf_h2o"].isna()
-    missing_id = data["uniprot_id"].isna()
-
-    sequence_ok = data["sequence_status"].eq("validated")
-    summary = {
-        "records": len(data),
-        "missing_targets": int(missing_target.sum()),
-        "missing_identifiers": int(missing_id.sum()),
-        "valid_sequences": int(sequence_ok.sum()),
-        "invalid_sequences": int((~sequence_ok).sum()),
-    }
-
-    if missing_id.any():
-        raise ValueError(
-            f"{missing_id.sum()} records have no UniProt identifier."
-        )
-
-    return summary
-
 
 def clean(data: pd.DataFrame) -> pd.DataFrame:
-    """Clean and standardize K-Pro data without changing its meaning."""
+    """Clean and standardize K-Pro data."""
 
     data = data.copy()
 
@@ -321,9 +300,6 @@ def clean(data: pd.DataFrame) -> pd.DataFrame:
 
     # Remove complete duplicates
     data.drop_duplicates(subset = ['UniProt', 'SOURCE', 'BUFFER_NAME', 'BUFFER_CONC', 'MUTATION_PDB', 'PDB_wild', 'T', 'pH', 'METHOD_KIN', 'MEASURE_KIN', 'STATE', 'PMID_KIN'],inplace = True)
-    
-    # Standardize missing values
-    data = data.replace(["", "NA", "N/A", "None"], pd.NA)
 
     # Strip whitespace from string columns
     string_columns = data.select_dtypes(include=['object', 'str']).columns
@@ -331,51 +307,10 @@ def clean(data: pd.DataFrame) -> pd.DataFrame:
         lambda column: column.str.strip()
     )
 
-    # Convert numeric columns
-    numeric_columns = ["T", "pH", "RSA", "LENGTH", "ln(kf)_H2O", "ln(ku)_H2O",
-                       "dGKIN_H2O", "mf", "mu", "beta-T",'PhiF_H2O']
-    
-    data[numeric_columns] = data[numeric_columns].apply(
-        pd.to_numeric,
-        errors="coerce"
-    )
-
+    # Fill missing mutation identifiers
+    data['MUTATION_PDB'] = data['MUTATION_PDB'].fillna(data['MUTATION_UNIPROT'])
+    data['MUTATION_UNIPROT'] = data['MUTATION_UNIPROT'].fillna(data['MUTATION_PDB'])
     return data
-
-def quality_assurance(data: pd.DataFrame):
-    print('='*30)
-    print('K-pro Data Quality Report')
-    print('='*30)
-
-    print('Records: '+ str(data['UniProt'].count()))
-    print('Mutations: '+ str(data['MUTATION_PDB'].nunique()))
-    print('Publications: '+ str(data['PMID_KIN'].nunique()))
-
-    print('\nMissing values')
-    print('-'*10)
-
-    na_columns = data.isna().sum()
-    for i, no in na_columns.items():
-        if no != 0:
-            print(i + ': ' + str(no))
-
-    print('\nMutation types')
-    print('-'*10)
-    print('WT: ' + str((data['MUTATION_PDB'] == 'WT').sum()))
-    print('Single: ' + str(data['MUTATION_PDB'].str.fullmatch(single_mutation_regex).sum()))
-    print('Double: ' + str(data['MUTATION_PDB'].str.fullmatch(double_mutation_regex).sum()))
-
-    print('\nExperimental Conditions')
-    print('-'*10)
-    print('Temperature: '+ str(data['T'].nunique()) + ' unique values')
-    print('pH: '+ str(data['pH'].nunique()) + ' unique values')
-    print('Methods: '+ str(data['METHOD_KIN'].nunique()) + ' unique values')
-    print('Buffer: '+ str(data['BUFFER_NAME'].nunique()) + ' unique values')
-    print('States: '+ str(data['STATE'].nunique()) + ' unique values')
-
-    print('\nDuplicates')
-    print('Exact duplicates: ' + str(data.drop(columns = ['CATH', 'PFAM']).duplicated().sum()))
-    print('Potential duplicates: ' + str(data.duplicated(subset = ['UniProt', 'SOURCE', 'BUFFER_NAME', 'BUFFER_CONC', 'MUTATION_PDB', 'PDB_wild', 'T', 'pH', 'METHOD_KIN', 'MEASURE_KIN', 'STATE', 'PMID_KIN']).sum()))
 
 def transform(data: pd.DataFrame) -> pd.DataFrame:
     """Transform cleaned K-Pro records into a standardized representation."""
@@ -439,3 +374,68 @@ def transform(data: pd.DataFrame) -> pd.DataFrame:
 
     return data
 
+def validate(data: pd.DataFrame) -> dict:
+    """Check essential requirements before loading records into SQL."""
+
+    if data.empty:
+        raise ValueError("ETL produced no records.")
+
+    required = ["uniprot_id", "reference_context"]
+    missing = set(required) - set(data.columns)
+
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+
+    missing_target = data["ln_kf_h2o"].isna()
+    missing_id = data["uniprot_id"].isna()
+
+    sequence_ok = data["sequence_status"].eq("validated")
+    summary = {
+        "records": len(data),
+        "missing_targets": int(missing_target.sum()),
+        "missing_identifiers": int(missing_id.sum()),
+        "valid_sequences": int(sequence_ok.sum()),
+        "invalid_sequences": int((~sequence_ok).sum()),
+    }
+
+    if missing_id.any():
+        raise ValueError(
+            f"{missing_id.sum()} records have no UniProt identifier."
+        )
+
+    return summary
+
+def quality_assurance(data: pd.DataFrame):
+    print('='*30)
+    print('K-pro Data Quality Report')
+    print('='*30)
+
+    print('Records: '+ str(data['UniProt'].count()))
+    print('Mutations: '+ str(data['MUTATION_PDB'].nunique()))
+    print('Publications: '+ str(data['PMID_KIN'].nunique()))
+
+    print('\nMissing values')
+    print('-'*10)
+
+    na_columns = data.isna().sum()
+    for i, no in na_columns.items():
+        if no != 0:
+            print(i + ': ' + str(no))
+
+    print('\nMutation types')
+    print('-'*10)
+    print('WT: ' + str((data['MUTATION_PDB'] == 'WT').sum()))
+    print('Single: ' + str(data['MUTATION_PDB'].str.fullmatch(single_mutation_regex).sum()))
+    print('Double: ' + str(data['MUTATION_PDB'].str.fullmatch(double_mutation_regex).sum()))
+
+    print('\nExperimental Conditions')
+    print('-'*10)
+    print('Temperature: '+ str(data['T'].nunique()) + ' unique values')
+    print('pH: '+ str(data['pH'].nunique()) + ' unique values')
+    print('Methods: '+ str(data['METHOD_KIN'].nunique()) + ' unique values')
+    print('Buffer: '+ str(data['BUFFER_NAME'].nunique()) + ' unique values')
+    print('States: '+ str(data['STATE'].nunique()) + ' unique values')
+
+    print('\nDuplicates')
+    print('Exact duplicates: ' + str(data.drop(columns = ['CATH', 'PFAM']).duplicated().sum()))
+    print('Potential duplicates: ' + str(data.duplicated(subset = ['UniProt', 'SOURCE', 'BUFFER_NAME', 'BUFFER_CONC', 'MUTATION_PDB', 'PDB_wild', 'T', 'pH', 'METHOD_KIN', 'MEASURE_KIN', 'STATE', 'PMID_KIN']).sum()))

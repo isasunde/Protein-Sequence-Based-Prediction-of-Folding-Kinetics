@@ -1,6 +1,7 @@
 """Clean, validate, and load K-Prot data into MySQL."""
 
 import os
+import json
 import logging
 from pathlib import Path
 
@@ -49,19 +50,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-import json
-
-
 def load_raw_data(raw_dir=RAW_DIR):
-    """Load API responses and combine their data records."""
+    """Load API responses from json and combine their records."""
 
     files = sorted(raw_dir.glob("*.json"))
 
     if not files:
         raise FileNotFoundError(
             f"No JSON files found in {raw_dir}. "
-            "Run 1_data_acquisition.py first."
+            "Run 1_Data_acquisition.py first."
         )
 
     frames = []
@@ -75,7 +72,7 @@ def load_raw_data(raw_dir=RAW_DIR):
 
             # Check the structure created by save_raw_response().
             if not isinstance(payload, dict):
-                raise ValueError("Expected a JSON object.")
+                raise ValueError("Expected a JSON file.")
 
             if "data" not in payload:
                 raise ValueError(
@@ -141,7 +138,7 @@ def prepare_raw_data(data_full):
 
     data_full = prepare_columns(data_full)
 
-    # Preserve missing values rather than converting them to "nan".
+    # Convert list values to strings.
     for column in PROBLEM_COLUMNS:
         if column in data_full.columns:
             data_full[column] = data_full[column].map(
@@ -150,15 +147,13 @@ def prepare_raw_data(data_full):
                 else value
             )
 
-    # Retain the expected schema and column order.
-    # Extra columns are excluded intentionally.
+    # Retain the expected column order, excluded extra columns intentionally.
     data_full = data_full.reindex(columns=EXP_COLUMNS)
 
     return data_full
 
-
 def run_etl(data_full):
-    """Clean, enrich, transform, and validate the dataset."""
+    """Clean, add sequences, transform, and validate the dataset."""
 
     logger.info("Cleaning data...")
     data_clean = clean(data_full)
@@ -174,7 +169,7 @@ def run_etl(data_full):
 
     # If validate() returns False on failure, prevent loading.
     if validation_result is False:
-        raise ValueError("Data validation failed; refusing database load.")
+        raise ValueError("Data validation failed; Skipping database load.")
 
     logger.info("ETL complete: %d records ready.", len(data))
 

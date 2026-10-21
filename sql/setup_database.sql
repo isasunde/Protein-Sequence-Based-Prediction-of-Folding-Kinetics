@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS experiment(
 
 CREATE TABLE IF NOT EXISTS measurement(
     measurement_id INT PRIMARY KEY AUTO_INCREMENT,
-    experiment_id INT NOT NULL,
+    experiment_id INT UNIQUE NOT NULL,
     ln_kf_h2o DECIMAL(5, 2),
     dln_kf_h2o DECIMAL(5, 2),
     ln_ku_h2o DECIMAL(5, 2),
@@ -159,17 +159,6 @@ CREATE TABLE IF NOT EXISTS measurement(
     mf DECIMAL(5, 2),
     mu DECIMAL(5, 2),
     beta_t DECIMAL(5, 2),
-    UNIQUE KEY uc_measurement(
-        experiment_id,
-		ln_kf_h2o,
-		dln_kf_h2o,
-		ln_ku_h2o,
-		dln_ku_h2o,
-		dg_kin_h2o,
-		ddgkin_h2o,
-        mf,
-		mu,
-		beta_t),
     CONSTRAINT fk_experiment_measurement
 		FOREIGN KEY (experiment_id)
         REFERENCES experiment(experiment_id)
