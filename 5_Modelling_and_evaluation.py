@@ -200,7 +200,7 @@ def define_models():
             "scale": True,
         },
         "Ridge": {
-            "model": Ridge(alpha=10),
+            "model": Ridge(alpha=100),
             "scale": True,
         },
         "XGBoost": {
