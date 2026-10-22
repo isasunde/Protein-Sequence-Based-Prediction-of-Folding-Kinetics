@@ -4,9 +4,9 @@ import pandas as pd
 from datetime import datetime
 
 from .sequence import (
+    parse_mutations,
     fetch_uniprot_sequence,
     build_variant_sequences,
-    extract_mutation_contexts,
 )
 
 # Prepare regex for pattern recognition of set columns
@@ -224,68 +224,56 @@ def add_sequences(
     data["mutation_context"] = None
     data["sequence_status"] = None
 
-    # Cache reference sequences so each accession is retrieved only once.
-    sequence_cache = {}
+    # Loop over each unique protein to get the same context for each 
+    for protein in data['UniProt'].unique():
+        data_current = data[data['UniProt'] == protein]
 
-    for accession in data["UniProt"].dropna().unique():
-        try:
-            sequence_cache[accession] = fetch_uniprot_sequence(accession)
-        except (requests.RequestException, ValueError) as exc:
-            sequence_cache[accession] = exc
-
-    for idx, row in data.iterrows():
-        accession = row["UniProt"]
-
-        if pd.isna(accession):
-            data.at[idx, "sequence_status"] = "missing_accession"
+        if pd.isna(protein):
+            data.loc[data['UniProt'] == protein, "sequence_status"] = "missing_accession"
             continue
-
-        reference = sequence_cache.get(accession)
-
-        if isinstance(reference, Exception):
-            data.at[idx, "sequence_status"] = (
+        else:
+            try:
+                reference = fetch_uniprot_sequence(protein)
+            except (requests.RequestException, ValueError) as exc:
+                reference = exc
+                data.loc[data['UniProt'] == protein, "sequence_status"] = (
                 f"reference_retrieval_failed: {reference}"
-            )
-            continue
-
-        if reference is None:
-            data.at[idx, "sequence_status"] = "reference_not_found"
-            continue
-
-        try:
-            sequences = build_variant_sequences(
-                reference_sequence=reference,
-                mutation_uniprot=row["MUTATION_UNIPROT"],
-                background_mutation_uniprot=row.get(
-                    "BACKGROUND_MUT_UNIPROT"
-                ),
-            )
-
-            reference_context = extract_mutation_contexts(
-                sequence=sequences["sequence_wildtype"],
-                mutation_string=row["MUTATION_UNIPROT"],
-                flank=flank,
-            )
-            if row['MUTATION_UNIPROT'] == 'WT':
-                mutation_context = None
-                status = 'No mutation'
-                
-            else:
-                mutation_context = extract_mutation_contexts(
-                    sequence=sequences["sequence_mutated"],
-                    mutation_string=row["MUTATION_UNIPROT"],
-                    flank=flank,
                 )
-                status = "validated"
-                
-            data.at[idx, "reference_context"] = reference_context
-            data.at[idx, "mutation_context"] = mutation_context
-            data.at[idx, "sequence_status"] = status
+                continue
+        
+        if reference is None:
+            data.loc[data['UniProt'] == protein, "sequence_status"] = "reference_not_found"
+            continue
+        
+        for idx, row in data_current.iterrows():
+            try:
+                sequences = build_variant_sequences(
+                    reference_sequence=reference,
+                    mutation_uniprot=row["MUTATION_UNIPROT"],
+                    background_mutation_uniprot=row.get(
+                        "BACKGROUND_MUT_UNIPROT"
+                    ),
+                )
 
-        except ValueError as exc:
-            data.at[idx, "sequence_status"] = (
-                f"mutation_validation_failed: {exc}"
-            )
+                reference_context  = sequences["sequence_wildtype"]
+                
+                if row['MUTATION_UNIPROT'] == 'WT':
+                    mutation_context = None
+                    status = 'No mutation'
+                    
+                else:
+                    mutation_context = sequences["sequence_mutated"]
+                    
+                    status = "validated"
+                    
+                data.at[idx, "reference_context"] = reference_context
+                data.at[idx, "mutation_context"] = mutation_context
+                data.at[idx, "sequence_status"] = status
+
+            except ValueError as exc:
+                data.at[idx, "sequence_status"] = (
+                    f"mutation_validation_failed: {exc}"
+                )
 
     return data
 
@@ -295,6 +283,10 @@ def clean(data: pd.DataFrame) -> pd.DataFrame:
 
     data = data.copy()
 
+    # Fill missing mutation identifiers
+    data['MUTATION_PDB'] = data['MUTATION_PDB'].fillna(data['MUTATION_UNIPROT'])
+    data['MUTATION_UNIPROT'] = data['MUTATION_UNIPROT'].fillna(data['MUTATION_PDB'])
+    
     # Align data types
     data = align_dtype(data)
 
@@ -306,10 +298,6 @@ def clean(data: pd.DataFrame) -> pd.DataFrame:
     data[string_columns] = data[string_columns].apply(
         lambda column: column.str.strip()
     )
-
-    # Fill missing mutation identifiers
-    data['MUTATION_PDB'] = data['MUTATION_PDB'].fillna(data['MUTATION_UNIPROT'])
-    data['MUTATION_UNIPROT'] = data['MUTATION_UNIPROT'].fillna(data['MUTATION_PDB'])
     return data
 
 def transform(data: pd.DataFrame) -> pd.DataFrame:

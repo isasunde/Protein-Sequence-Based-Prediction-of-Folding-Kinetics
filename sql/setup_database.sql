@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS placeholder(
     phif_h2o DECIMAL(5, 2),
     background_mutation_uniprot VARCHAR(50),
     background_mutation_pdb VARCHAR(50),
-    reference_context VARCHAR(300),
-    mutation_context VARCHAR(300),
+    reference_context TEXT(10000),
+    mutation_context TEXT(10000),
     sequence_status VARCHAR(100)
 );
 

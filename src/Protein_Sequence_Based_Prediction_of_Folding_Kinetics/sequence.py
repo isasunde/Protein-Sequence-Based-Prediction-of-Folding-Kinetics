@@ -16,18 +16,20 @@ VALID_AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWYBXZJUO")
 def parse_mutations(mutation_string):
     """Parse UniProt-style substitutions such as A34V or A34V,G56D."""
 
-    if mutation_string is None or pd.isna(mutation_string):
+    if mutation_string == 'NA' or None or pd.isna(mutation_string):
         return []
 
     value = str(mutation_string).strip().strip("[]").strip()
 
-    if not value or value.upper() == "WT":
+    if re.search('WT', value.upper()):
         return []
 
     mutations = []
 
     for item in value.split(","):
         item = item.strip()
+        item = item.strip('"')
+        item = item.strip("'")
         match = MUTATION_PATTERN.fullmatch(item)
 
         if match is None:
@@ -48,7 +50,6 @@ def parse_mutations(mutation_string):
     return mutations
 
 
-@lru_cache(maxsize=512)
 def fetch_uniprot_sequence(accession):
     """Retrieve and cache a protein sequence from UniProt."""
 
@@ -141,21 +142,3 @@ def build_variant_sequences(
         "sequence_wildtype": background_sequence,
         "sequence_mutated": mutant_sequence,
     }
-
-
-def extract_mutation_contexts(sequence, mutation_string, flank=15):
-    """Return local sequence windows centred on all mutated positions."""
-
-    starts = []
-    ends = []
-
-    for wt, position, mutant in parse_mutations(mutation_string):
-        starts.append(max(1, position - flank))
-        ends.append(min(len(sequence), position + flank))
-
-    start = min(starts)
-    end = max(ends)
-
-    context = sequence[start - 1:end]
-
-    return context
