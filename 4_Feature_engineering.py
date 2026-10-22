@@ -27,7 +27,7 @@ PERFORM_EMBEDDING = True
 BATCH_SIZE = 8
 
 TARGET = "ln_kf_h2o"
-SEQUENCE = "mutation_context"
+SEQUENCE = "sequence"
 
 METADATA_COLUMNS = [
     "measurement_id",
@@ -53,7 +53,9 @@ def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
         "measurement_id",
         "protein_id",
         "mutation_id",
-        SEQUENCE,
+        "mutation_uniprot",
+        'reference_context',
+        'mutation_context',
         TARGET,
     ]
 
@@ -69,8 +71,20 @@ def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
 
     data = data.copy()
 
-    data[SEQUENCE] = (
-        data[SEQUENCE]
+    # Select the reference sequence for WT records and the mutant sequence otherwise.
+    is_wildtype = (
+        data["mutation_uniprot"]
+        .astype("string")
+        .str.fullmatch(r"\s*WT\s*", case=False, na=False)
+    )
+
+    data["sequence"] = data["mutation_context"].where(
+        ~is_wildtype,
+        data["reference_context"],
+    )
+
+    data["sequence"] = (
+        data["sequence"]
         .astype("string")
         .str.upper()
         .str.replace(r"\s+", "", regex=True)
@@ -78,7 +92,7 @@ def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
 
     data[TARGET] = pd.to_numeric(data[TARGET], errors="coerce")
 
-    valid_sequence = data[SEQUENCE].str.fullmatch(
+    valid_sequence = data['sequence'].str.fullmatch(
         r"[ACDEFGHIKLMNPQRSTVWYX]+",
         na=False,
     )
@@ -98,7 +112,7 @@ def prepare_sequences(data: pd.DataFrame) -> pd.DataFrame:
     print(f"Valid observations: {len(data):,}")
     print(f"Unique proteins: {data['protein_id'].nunique():,}")
     print(f"Unique mutations: {data['mutation_id'].nunique():,}")
-    print(f"Unique sequences: {data[SEQUENCE].nunique():,}")
+    print(f"Unique sequences: {data['sequence'].nunique():,}")
 
     return data
 
@@ -112,7 +126,7 @@ def load_or_create_embeddings(data: pd.DataFrame):
     # Adapt SQL column names to the existing repository embedding interface.
     embedding_data = data.rename(
         columns={
-            SEQUENCE: "sequence_mutated",
+            SEQUENCE: "sequence",
             TARGET: "ln(kf)_H2O",
         }
     )
@@ -125,7 +139,7 @@ def load_or_create_embeddings(data: pd.DataFrame):
             token,
             output_file=str(EMBEDDING_PATH),
             batch_size=BATCH_SIZE,
-            sequence_col="sequence_mutated",
+            sequence_col="sequence",
             target_col="ln(kf)_H2O",
             metadata_cols=METADATA_COLUMNS,
         )

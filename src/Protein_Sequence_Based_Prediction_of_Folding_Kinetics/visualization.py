@@ -76,7 +76,7 @@ def similarity_visualization(
     # Determine proteins with the lowest general similarity to others
     avg_similarity = np.mean(similarity_matrix, axis=1)
     protein_similarity = pd.DataFrame({
-        'Protein': df['protein'],
+        'Protein': df['protein_name'],
         'Avg_Similarity': avg_similarity
     })
     protein_similarity = protein_similarity.drop_duplicates().sort_values(by='Avg_Similarity')

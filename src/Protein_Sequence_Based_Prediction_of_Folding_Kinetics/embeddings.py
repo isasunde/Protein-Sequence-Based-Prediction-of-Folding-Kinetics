@@ -91,7 +91,7 @@ def data_embed(
     token: str,
     output_file: str = "",
     batch_size: int = 8,
-    sequence_col: str = "sequence_mutated",
+    sequence_col: str = "sequence",
     target_col: str = "ln(kf)_H2O",
     metadata_cols: list[str] | None = None,
 ):

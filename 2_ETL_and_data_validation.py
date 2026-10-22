@@ -160,8 +160,6 @@ def run_etl(data_full):
 
     logger.info("Adding sequences...")
     data_clean = add_sequences(data_clean)
-    print(data_clean.loc[0:10,['sequence_status']])
-
 
     logger.info("Transforming data...")
     data = transform(data_clean)

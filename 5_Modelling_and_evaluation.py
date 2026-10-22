@@ -124,12 +124,21 @@ def load_model_dataset():
     if data[TARGET].isna().any():
         raise ValueError("SQL dataset contains missing target values.")
 
-    if data["sequence"].isna().any() or data["mutation_context"].isna().any():
+    if data["sequence"].isna().any() or data["reference_context"].isna().any():
         raise ValueError("Sequence data contain missing values.")
 
     # Check that the cached sequence matches the SQL sequence context.
+    # Select the reference sequence for WT records and the mutant sequence otherwise.
+    is_wildtype = (
+        data["mutation_uniprot"]
+        .astype("string")
+        .str.fullmatch(r"\s*WT\s*", case=False, na=False)
+    )
+    
     sql_sequences = (
-        data["mutation_context"].astype(str).str.upper().str.replace(
+        data["mutation_context"].where(
+            ~is_wildtype,
+            data["reference_context"]).astype(str).str.upper().str.replace(
             r"\s+", "", regex=True
         )
     )
@@ -157,9 +166,6 @@ def load_model_dataset():
             "Regenerate the embeddings."
         )
 
-    # Use protein name for grouping
-    data["protein"] = data["protein_name"].astype(str)
-
     # Retain a useful mutation label for the existing visualizations.
     data["mutation"] = (
         data["mutation_pdb"]
@@ -175,7 +181,7 @@ def load_model_dataset():
 
     print("Dataset loaded successfully.")
     print(f"Measurements: {len(data):,}")
-    print(f"Unique proteins: {data['protein'].nunique():,}")
+    print(f"Unique proteins: {data['protein_id'].nunique():,}")
     print(f"Unique mutations: {data['mutation_id'].nunique():,}")
     print(f"Embedding dimensions: {X.shape[1]:,}")
 
@@ -333,7 +339,7 @@ def evaluate_protein(X, y, data, models):
 
     # Select a protein with the most observations, making the evaluation
     # plot more informative than choosing an arbitrary list index.
-    protein_counts = data["protein"].value_counts()
+    protein_counts = data["protein_id"].value_counts()
 
     if protein_counts.empty:
         print("No proteins available for individual evaluation.")
@@ -341,7 +347,7 @@ def evaluate_protein(X, y, data, models):
 
     protein = protein_counts.index[0]
     protein_name = data.loc[
-        data["protein"] == protein, "protein_name"
+        data["protein_id"] == protein, "protein_name"
     ].dropna()
 
     display_name = (
@@ -361,6 +367,7 @@ def evaluate_protein(X, y, data, models):
         y,
         models,
         protein,
+        protein_name
     )
 
     fig, axes = true_vs_predicted_scatter(

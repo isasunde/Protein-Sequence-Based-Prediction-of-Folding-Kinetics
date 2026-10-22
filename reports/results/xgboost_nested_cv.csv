@@ -1,6 +1,6 @@
 Fold,Test_Proteins,MSE,n_estimators
-1,"['Spectrin SH3', 'Fyn SH3', 'Protein LG', 'raf RBD', 'PSD1(D27E/Y28K/E43W)']",6.155288694261307,100
-2,"['Nucleophosmin, Cter-NPM1 domain', 'FBP28', 'CTL9', 'FKBP12', 'CBP, KIX domain']",24.892299815947027,100
-3,"['ACBP', 'Tenascin, TNfn3 domain', 'Im9*', 'CKS1', 'Grb2-SH3']",4.636030938439431,100
-4,"['NTL9', 'mAcP', 'Azurin', 'CI2']",17.76711223508179,1000
-5,"['bACBP', 'ADAh2', 'L23', 'FF domain from HYPA/FBP11']",6.896780514460733,100
+1,"[np.int64(33), np.int64(66), np.int64(20), np.int64(27), np.int64(8), np.int64(19), np.int64(32), np.int64(60), np.int64(70), np.int64(50), np.int64(53), np.int64(6)]",14.274871503666205,250
+2,"[np.int64(68), np.int64(28), np.int64(34), np.int64(40), np.int64(44), np.int64(22), np.int64(62), np.int64(61), np.int64(51), np.int64(65), np.int64(59), np.int64(5)]",20.09962678007111,1000
+3,"[np.int64(29), np.int64(16), np.int64(41), np.int64(26), np.int64(48), np.int64(10), np.int64(67), np.int64(24), np.int64(17), np.int64(4), np.int64(39)]",3.376792841779599,750
+4,"[np.int64(11), np.int64(55), np.int64(63), np.int64(7), np.int64(49), np.int64(12), np.int64(52), np.int64(25), np.int64(21), np.int64(46), np.int64(1)]",4.688849661910233,250
+5,"[np.int64(57), np.int64(13), np.int64(54), np.int64(15), np.int64(69), np.int64(3), np.int64(47), np.int64(42), np.int64(2), np.int64(14), np.int64(9)]",4.39139513733655,500

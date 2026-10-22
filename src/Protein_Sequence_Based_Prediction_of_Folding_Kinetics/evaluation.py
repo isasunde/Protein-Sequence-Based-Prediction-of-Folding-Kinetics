@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.base import clone
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
@@ -41,14 +41,14 @@ def leave_one_protein_out_cv(
         Fold-level performance metrics for each model.
     """
 
-    proteins = embeddings_df["protein"].unique()
+    proteins = embeddings_df["protein_id"].unique()
     results = []
 
     for fold, protein in enumerate(
         tqdm(proteins, desc="Leave-one-protein-out CV"),
         start=1,
     ):
-        test_mask = embeddings_df["protein"] == protein
+        test_mask = embeddings_df["protein_id"] == protein
 
         X_train = X[~test_mask]
         X_test = X[test_mask]
@@ -213,7 +213,7 @@ def nested_cv(
         Inner cross-validation results for all hyperparameter values.
     """
 
-    proteins = embeddings_df["protein"].to_numpy()
+    proteins = embeddings_df["protein_id"].to_numpy()
 
     unique_proteins = np.unique(proteins)
 
@@ -350,6 +350,10 @@ def nested_cv(
                     y_val,
                     predictions,
                 )
+                mae = mean_absolute_error(
+                    y_val,
+                    predictions,
+                )
 
                 parameter_mse[parameter].append(
                     mse
@@ -360,6 +364,8 @@ def nested_cv(
                         "Outer_Fold": fold,
                         hyperparameter_name: parameter,
                         "MSE": mse,
+                        "RMSE": np.sqrt(mse),
+                        "MAE": mae,
                     }
                 )
 
@@ -433,18 +439,27 @@ def nested_cv(
             predictions_test,
         )
 
+        test_mae = mean_absolute_error(
+            y_test,
+            predictions_test,
+        )
+
         results.append(
             {
                 "Fold": fold,
                 "Test_Proteins": list(test_proteins),
                 "MSE": test_mse,
+                "RMSE": np.sqrt(test_mse),
+                'MAE': test_mae,
                 hyperparameter_name: best_parameter,
             }
         )
 
         print(
-            f"Outer fold {fold} test MSE: "
-            f"{test_mse:.4f}"
+            f"Outer fold {fold}:"
+            f" Test MSE: {test_mse:.4f}"
+            f" Test RMSE: {np.sqrt(test_mse):.4f}"
+            f" Test MAE: {test_mae:.4f}"
         )
 
     # ------------------------------------------------------------
@@ -462,10 +477,14 @@ def nested_cv(
     )
 
     mean_test_mse = results_df["MSE"].mean()
+    mean_test_rmse = np.sqrt(results_df["MSE"]).mean()
+    mean_test_mae = results_df["MAE"].mean()
 
     print(
-        f"\nOverall Nested CV Generalisation MSE: "
-        f"{mean_test_mse:.4f}"
+        f"\nOverall Nested CV: "
+        f"Generalisation MSE: {mean_test_mse:.4f}"
+        f"Generalisation RMSE: {mean_test_rmse:.4f}"
+        f"Generalisation MAE: {mean_test_mse:.4f}"
     )
 
     return results_df, inner_results_df
@@ -475,7 +494,8 @@ def evaluate_one_protein(
     X: np.ndarray,
     y: np.ndarray,
     models: dict,
-    protein: str,
+    protein_id: int,
+    protein_name: str,
 ):
     """
     Train and evaluate models using one protein as the test set.
@@ -491,8 +511,10 @@ def evaluate_one_protein(
     models : dict
         Dictionary containing model configurations. Each configuration
         should contain a ``model`` and ``scale`` entry.
-    protein : str
+    protein_id : int
         Protein to use as the test set.
+    protein_name : str
+        Name of protein to use as the test set.
 
     Returns
     -------
@@ -505,7 +527,7 @@ def evaluate_one_protein(
     """
 
     # Split data into training and test sets
-    test_mask = embeddings_df["protein"] == protein
+    test_mask = embeddings_df["protein_id"] == protein_id
 
     X_train = X[~test_mask]
     X_test = X[test_mask]
@@ -538,7 +560,7 @@ def evaluate_one_protein(
         )
 
         print(
-            f"{model_name} MSE on protein {protein}: "
+            f"{model_name} MSE on protein {protein_id}: {protein_name}: "
             f"{mse[model_name]:.4f}"
         )
 
